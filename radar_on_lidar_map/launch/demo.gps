@@ -1,0 +1,14 @@
+﻿header:
+  seq: 999
+  stamp:
+    secs: 1435607489
+    nsecs: 924811809
+  frame_id: map
+status:
+  status: 0
+  service: 1
+latitude: 36.3665073
+longitude: 127.3633047
+altitude: 66.549
+position_covariance: [3.9561210000000004, 0.0, 0.0, 0.0, 3.9561210000000004, 0.0, 0.0, 0.0, 7.650756]
+position_covariance_type: 2

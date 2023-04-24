@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/myk/dev/study/radar/RoLM3.0_zju/devel/include/**",
+        "/home/myk/dev/study/radar/RoLM3.0_zju/src/radar_on_lidar_map/include/**",
+        "/home/myk/dev/study/radar/RoLM3.0_zju/src/odometry/yeti_radar_odometry/include/**",
+        "/usr/include/**",
+        "/opt/ros/melodic/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.jason"
+    }
+  ],
+  "version": 4
+}
