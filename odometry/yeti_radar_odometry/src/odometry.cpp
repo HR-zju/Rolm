@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
 	ros::NodeHandle nh;
 
     omp_set_num_threads(8);
-    sleep(10);
+    sleep(15);
 
 	pubOdom = nh.advertise<nav_msgs::Odometry>("/yeti_odom", 100);
     currOdom = Eigen::MatrixXd::Identity(4, 4); // initial pose is I
@@ -121,9 +121,10 @@ int main(int argc, char *argv[])
     std::ofstream timeotput;
     timeotput.open("/home/myk/dev/study/radar/yeti_read_method/time.csv", std::ios::out);
 
-
+    clock_t every_scan_begin, every_scan_end, keypoint_extract_time, keypoint_match_time, ransac_time, motion_distorted, Doppler_time, pub_time;
     for (uint i = 0; i < radar_files.size() - 2; ++i)
-    {
+    {   
+        every_scan_begin = clock();
         if( i % 100 == 0)
             std::cout << i << "/" << radar_files.size() << std::endl;
 
@@ -154,8 +155,9 @@ int main(int argc, char *argv[])
         //     valid[num_ray] = 1;
         // }
         ///
-       std::reverse(std::begin(times), std::end(times));
-       std::reverse(std::begin(azimuths), std::end(azimuths));
+        // TODO: 不是简单旋转而是想办法逆转
+        // std::reverse(std::begin(times), std::end(times));
+        // std::reverse(std::begin(azimuths), std::end(azimuths));
 
         if (keypoint_extraction == 0)
             cen2018features(fft_data, zq, sigma_gauss, min_range, targets);
@@ -174,6 +176,10 @@ int main(int argc, char *argv[])
             }
             timeotput << "=====" << std::endl;
         }
+
+        keypoint_extract_time =  clock();
+        std::cout << "提取特征点的时间" << double(keypoint_extract_time - every_scan_begin) / CLOCKS_PER_SEC * 1000 << "ms" << std::endl;
+
         if (keypoint_extraction == 2) {
             detector->detect(img2, kp2);
             detector->compute(img2, kp2, desc2);
@@ -197,6 +203,10 @@ int main(int argc, char *argv[])
                 good_matches.push_back(knn_matches[j][0]);
             }
         }
+
+        keypoint_match_time =  clock();
+        std::cout << "匹配征点的时间" << double(keypoint_match_time - every_scan_begin) / CLOCKS_PER_SEC * 1000 << "ms" << std::endl;
+
 
         // Convert the good key point matches to Eigen matrices
         Eigen::MatrixXd p1 = Eigen::MatrixXd::Zero(2, good_matches.size());
@@ -227,6 +237,10 @@ int main(int argc, char *argv[])
         Eigen::MatrixXd T;  // T_1_2
         ransac.getTransform(T);
 
+        ransac_time =  clock();
+        std::cout << "特征点转换成矩阵的时间 " << double(ransac_time - every_scan_begin) / CLOCKS_PER_SEC * 1000 << "ms" << std::endl;
+
+
         // v2: Compute the transformation using motion-distorted RANSAC
         MotionDistortedRansac mdransac(p2, p1, t2prime, t1prime, md_threshold, inlier_ratio, max_iterations);
         mdransac.setMaxGNIterations(max_gn_iterations);
@@ -239,6 +253,10 @@ int main(int argc, char *argv[])
         // Eigen::VectorXd wbar;
         // mdransac.getMotion(wbar);
 
+        motion_distorted =  clock();
+        std::cout << "ransac时间 " << double(motion_distorted - every_scan_begin) / CLOCKS_PER_SEC * 1000 << "ms" << std::endl;
+
+
         // v3: MDRANSAC + Doppler
         mdransac.correctForDoppler(true);
         mdransac.setDopplerParameter(beta);
@@ -247,6 +265,11 @@ int main(int argc, char *argv[])
         Eigen::MatrixXd Tmd2 = Eigen::MatrixXd::Zero(4, 4);
         mdransac.getTransform(delta_t, Tmd2);
         Tmd2 = Tmd2.inverse();
+
+        Doppler_time =  clock();
+        std::cout << " 多普勒 " << double(Doppler_time - every_scan_begin) / CLOCKS_PER_SEC * 1000 << "ms" << std::endl;
+
+
 
         // not use for this example 
         // Retrieve the ground truth to calculate accuracy
@@ -271,12 +294,17 @@ int main(int argc, char *argv[])
 
         // curuent state
         currOdom = currOdom * Tmd;
-        Eigen::Matrix3d currOdomRot = currOdom.block(0,0,3,3);
+        Eigen::Matrix3d currOdomRot = currOdom.block(0,0,3,3); 
         Eigen::Vector3d currOdomEuler = currOdomRot.eulerAngles(0,1,2);
         // Eigen::Vector3d currEulerVec = currOdomRot.eulerAngles(2, 1, 0);
         // float currYaw = asin(-1 * currOdom(0, 1));
         // float currYaw = currEulerVec(3);
-        float currYaw = float(currOdomEuler(2));
+        float currYaw = -float(currOdomEuler(2));
+        // TODO: Rotation
+        // if (abs(currOdomEuler[1]) > M_PI / 2.0) currYaw = M_PI + currOdomEuler[2];
+        // else currYaw = currOdomEuler[2];
+        // currYaw = -currYaw;
+
         // std::cout << "currOdomEuler: " << currOdomEuler(0) << ", " << currOdomEuler(1) << ", " << currOdomEuler(2) << std::endl;
 
         // double currOdomTimeSec = double(time2) / 100000000.0;
@@ -290,8 +318,8 @@ int main(int argc, char *argv[])
         // odom.header.stamp = ros::Time().fromSec( currOdomTimeSec );
         odom.header.stamp = currOdomROSTime;
         odom.pose.pose.position.x = currOdom(0, 3);
-        odom.pose.pose.position.y = currOdom(1, 3);
-        odom.pose.pose.position.z = currOdom(2, 3);
+        odom.pose.pose.position.y = -currOdom(1, 3);
+        odom.pose.pose.position.z = -currOdom(2, 3);  // TODO: 翻转
         odom.pose.pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(0.0, 0.0, currYaw);
         pubOdom.publish(odom); // last pose 
 
@@ -301,7 +329,7 @@ int main(int argc, char *argv[])
             // cart_feature_cloud: 3xN (i.e., [x,y,z]' x N points)
             PointType feature_point;
             feature_point.x = cart_feature_cloud(0, pt_idx);
-            feature_point.y = cart_feature_cloud(1, pt_idx);
+            feature_point.y = -cart_feature_cloud(1, pt_idx); // TODO: y = -y
             feature_point.z = cart_feature_cloud(2, pt_idx) + contant_z_nonzero;
             laserCloudLocal->push_back(feature_point);
         }
@@ -331,6 +359,10 @@ int main(int argc, char *argv[])
         laserCloudGlobalMsg.header.stamp = currOdomROSTime;
         pubLaserCloudGlobal.publish(laserCloudGlobalMsg);
 
+        pub_time =  clock();
+        std::cout << " 发布时间 " << double(pub_time - every_scan_begin) / CLOCKS_PER_SEC * 1000 << "ms" << std::endl;
+
+
         // vis (optional)
         if(0) {
             cv::Mat img_matches;
@@ -343,6 +375,9 @@ int main(int argc, char *argv[])
         // make sure under 10hz, to privde enough time for following PGO module
         // std::this_thread::sleep_for(std::chrono::milliseconds(100));
         // std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        every_scan_end = clock();
+        std::cout << "处理一帧的时间 " << double(every_scan_end - every_scan_begin) / CLOCKS_PER_SEC * 1000 << "ms" << std::endl;
+
     }
 
     ros::spin();
